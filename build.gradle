@@ -1,5 +1,6 @@
 
 apply from: "$rootDir/VCS.gradle"
+apply from: "$rootDir/buildjar.gradle"
 apply from: 'export.gradle'
 buildscript {
     repositories {
@@ -74,6 +75,7 @@ patcher {
     mappings channel: mappings_channel, version: mappings_version
     mcVersion = minecraft_version
 }
+
 
 jar {
     configurations.shade.each { dep ->

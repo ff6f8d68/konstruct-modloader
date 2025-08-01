@@ -1,8 +1,8 @@
+// ---- Load Mod Info ----
 def modMainPath = "$rootDir/src/main/java/com/examplemod/main.java"
 def modName = "unnamed-mod"
 def modVersion = "0.0.0"
 
-// Read mod name + version from the main class
 if (file(modMainPath).exists()) {
     def fileText = file(modMainPath).text
 
@@ -19,24 +19,55 @@ if (file(modMainPath).exists()) {
     println "⚠️ Could not find main class at: $modMainPath"
 }
 
-task exportKbp(type: Zip) {
-    def safeModName = modName.toLowerCase().replaceAll(/\s+/, "_")
+// ---- Export Task ----
+tasks.register("exportKbp", Zip) {
+    group = "build"
+    description = "Exports only mod files and patched classes to a .kbp archive"
 
+    def safeModName = modName.toLowerCase().replaceAll(/\s+/, "_")
     archiveFileName.set("${safeModName}-${modVersion}.kbp")
     archiveExtension.set("kbp")
     destinationDirectory.set(file("$buildDir/kbp-export"))
 
+    dependsOn("patch") // make sure patched classes are up to date
+
+    // Include mod's compiled class files
     from("$buildDir/classes/java/main") {
         include 'com/examplemod/**'
     }
 
+    // Include mod's resources
     from("src/main/resources") {
         include 'com/examplemod/**'
     }
 
-    exclude '**/net/minecraft/**'
+    // Include patched Minecraft.class
+    from("$buildDir/classes/java/main") {
+        include 'net/minecraft/client/Minecraft.class'
+    }
+
+    // Exclude all other Mojang code
+    exclude {
+        it.file.path.contains("net/minecraft") &&
+                !it.file.path.endsWith("net/minecraft/client/Minecraft.class")
+    }
+    exclude '**/com/mojang/**'
+
+    // Optional: Add a manifest with metadata
+    into("META-INF") {
+        from {
+            def tempManifest = file("$buildDir/tmp/kbp-manifest.json")
+            tempManifest.text = """{
+  "modid": "${safeModName}",
+  "name": "${modName}",
+  "version": "${modVersion}",
+  "type": "kbp"
+}"""
+            return tempManifest
+        }
+    }
 
     doLast {
-        println "Exported ${archiveFile.get().asFile}"
+        println "✅ Exported ${archiveFile.get().asFile}"
     }
 }

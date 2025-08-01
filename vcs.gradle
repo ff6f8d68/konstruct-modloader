@@ -1,0 +1,32 @@
+task exportVcs(type: Zip) {
+    def vcsOutputName = "konstruct-1.0.0-workspace"
+
+    archiveFileName.set("${vcsOutputName}.zip") // Or .kbp if you prefer
+    destinationDirectory.set(file("$buildDir/vcs-export"))
+
+    from('.') {
+        include '**' // Include everything from project root
+
+        // Exclude Mojang or Minecraft proprietary packages
+        exclude '**/com/mojang/**'
+        exclude '**/net/minecraft/**'
+
+        // Exclude build system clutter
+        exclude '**/.gradle/**'
+        exclude '**/build/**'
+        exclude '**/.idea/**'
+        exclude '**/*.iml'
+        exclude '**/out/**'
+
+        // Exclude dev runtime folders
+        exclude 'run/**'
+        exclude 'runserver/**'
+
+        // Exclude extra local projects folder
+        exclude 'projects/**'
+    }
+
+    doLast {
+        println "📦 Workspace exported to ${archiveFile.get().asFile}"
+    }
+}

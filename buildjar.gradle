@@ -1,0 +1,36 @@
+// Delay evaluation until after project is fully configured
+project.afterEvaluate {
+    def mainOutput = project.sourceSets.main.output
+    def mainResources = project.sourceSets.main.resources
+
+    task buildModJar(type: Jar) {
+        group = 'build'
+        description = 'Builds the mod jar (before reobfuscation)'
+
+        archiveBaseName.set("konstruct")
+        archiveVersion.set(project.version ?: "dev")
+        destinationDirectory.set(file("$buildDir/libs"))
+
+        from(mainOutput) {
+            include 'modloader/konstruct/**'
+            include 'net/minecraft/client/Minecraft.class'
+            exclude('net/minecraft/server/**', 'com/mojang/**')
+        }
+
+        from(mainResources.srcDirs) {
+            include '**'
+        }
+
+        manifest {
+            attributes(
+                    'Implementation-Title': 'konstruct',
+                    'Implementation-Version': project.version ?: 'dev',
+                    'Main-Class': 'modloader.konstruct.loader'
+            )
+        }
+
+        doLast {
+            println "✅ Mod jar built at: ${archiveFile.get().asFile}"
+        }
+    }
+}
