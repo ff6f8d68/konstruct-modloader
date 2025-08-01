@@ -1,0 +1,42 @@
+def modMainPath = "$rootDir/src/main/java/com/examplemod/main.java"
+def modName = "unnamed-mod"
+def modVersion = "0.0.0"
+
+// Read mod name + version from the main class
+if (file(modMainPath).exists()) {
+    def fileText = file(modMainPath).text
+
+    def modNameMatch = fileText =~ /new ModInfo\(\s*"([^"]+)",/
+    def modVersionMatch = fileText =~ /new ModInfo\(\s*"[^"]+",\s*"([^"]+)",/
+
+    if (modNameMatch.find()) {
+        modName = modNameMatch.group(1)
+    }
+    if (modVersionMatch.find()) {
+        modVersion = modVersionMatch.group(1)
+    }
+} else {
+    println "⚠️ Could not find main class at: $modMainPath"
+}
+
+task exportKbp(type: Zip) {
+    def safeModName = modName.toLowerCase().replaceAll(/\s+/, "_")
+
+    archiveFileName.set("${safeModName}-${modVersion}.kbp")
+    archiveExtension.set("kbp")
+    destinationDirectory.set(file("$buildDir/kbp-export"))
+
+    from("$buildDir/classes/java/main") {
+        include 'com/examplemod/**'
+    }
+
+    from("src/main/resources") {
+        include 'com/examplemod/**'
+    }
+
+    exclude '**/net/minecraft/**'
+
+    doLast {
+        println "Exported ${archiveFile.get().asFile}"
+    }
+}
