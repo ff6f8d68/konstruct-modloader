@@ -1,11 +1,61 @@
-// Delay evaluation until after project is fully configured
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.ow2.asm:asm:9.5'
+        classpath 'org.ow2.asm:asm-commons:9.5'
+    }
+}
+
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import org.objectweb.asm.*
+import org.objectweb.asm.commons.Remapper
+import org.objectweb.asm.commons.ClassRemapper
+
+// Parses Tiny mappings file and reverses mappings for reobfuscation (deobf -> obf)
+def parseTinyMappings(File tinyFile) {
+    def classMap = [:]
+    def fieldMap = [:]
+    def methodMap = [:]
+
+    tinyFile.eachLine { line ->
+        line = line.trim()
+        if (line.startsWith("c\t")) {
+            def parts = line.split("\t")
+            if (parts.length >= 3) {
+                def obf = parts[1]
+                def deobf = parts[2]
+                classMap[deobf] = obf
+            }
+        } else if (line.startsWith("f\t")) {
+            def parts = line.split("\t")
+            if (parts.length >= 4) {
+                def obf = parts[1]
+                def deobf = parts[3]
+                fieldMap[deobf] = obf
+            }
+        } else if (line.startsWith("m\t")) {
+            def parts = line.split("\t")
+            if (parts.length >= 5) {
+                def obf = parts[1]
+                def deobf = parts[3]
+                methodMap[deobf] = obf
+            }
+        }
+    }
+    return [classes: classMap, fields: fieldMap, methods: methodMap]
+}
+
 project.afterEvaluate {
     def mainOutput = project.sourceSets.main.output
     def mainResources = project.sourceSets.main.resources
 
     task buildModJar(type: Jar) {
         group = 'build'
-        description = 'Builds the mod jar (before reobfuscation)'
+        description = 'Builds the mod jar (unobfuscated)'
 
         archiveBaseName.set("konstruct")
         archiveVersion.set(project.version ?: "dev")
@@ -29,8 +79,85 @@ project.afterEvaluate {
             )
         }
 
+
+    }
+
+    task reobfModJar {
+        group = 'build'
+        description = 'Reobfuscates the mod jar using Yarn Tiny mappings'
+
+        dependsOn buildModJar
+
         doLast {
-            println "✅ Mod jar built at: ${archiveFile.get().asFile}"
+            def inputJar = buildModJar.archiveFile.get().asFile
+            def outputJar = file("${inputJar.parent}/${inputJar.name.replace('.jar', '-reobf.jar')}")
+            def tinyMappingsFile = file("mappings/yarn-1.20.1+build.9-tiny")
+
+            if (!tinyMappingsFile.exists()) {
+                throw new GradleException("Missing mappings file: ${tinyMappingsFile}")
+            }
+
+            def maps = parseTinyMappings(tinyMappingsFile)
+            println "⚙️ Loaded ${maps.fields.size()} field mappings, ${maps.methods.size()} method mappings, and ${maps.classes.size()} class mappings"
+
+            def tempJar = new File(buildDir, "tmp/reobf-temp.jar")
+            tempJar.parentFile.mkdirs()
+
+            ZipInputStream zin = new ZipInputStream(new FileInputStream(inputJar))
+            ZipOutputStream zout = new ZipOutputStream(new FileOutputStream(tempJar))
+
+            ZipEntry entry
+            while ((entry = zin.nextEntry) != null) {
+                if (!entry.name.endsWith(".class")) {
+                    zout.putNextEntry(new ZipEntry(entry.name))
+                    zin.transferTo(zout)
+                    zout.closeEntry()
+                    continue
+                }
+
+                def cr = new ClassReader(zin)
+                def cw = new ClassWriter(0)
+
+                def remapper = new Remapper() {
+                    @Override
+                    String map(String internalName) {
+                        return maps.classes.getOrDefault(internalName, internalName)
+                    }
+                    @Override
+                    String mapFieldName(String owner, String name, String descriptor) {
+                        return maps.fields.getOrDefault(name, name)
+                    }
+                    @Override
+                    String mapMethodName(String owner, String name, String descriptor) {
+                        return maps.methods.getOrDefault(name, name)
+                    }
+                }
+
+                def remapped = new ClassRemapper(cw, remapper)
+                cr.accept(remapped, 0)
+
+                zout.putNextEntry(new ZipEntry(entry.name))
+                zout.write(cw.toByteArray())
+                zout.closeEntry()
+            }
+
+            zin.close()
+            zout.close()
+
+            if (outputJar.exists()) {
+                outputJar.delete()
+            }
+            tempJar.renameTo(outputJar)
+
+            println "🎉 Reobfuscated jar written to: $outputJar"
         }
     }
+
+    task reobfBuildModJar {
+        dependsOn reobfModJar
+    }
+
+    buildModJar.finalizedBy reobfBuildModJar
+
 }
+

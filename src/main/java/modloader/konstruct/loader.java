@@ -1,7 +1,7 @@
 package modloader.konstruct;
 
-import modloader.konstruct.fundation.mod;
-import modloader.konstruct.fundation.ModInfo;
+import modloader.konstruct.foundation.mod;
+import modloader.konstruct.foundation.ModInfo;
 
 import javax.swing.*;
 import java.awt.*;
